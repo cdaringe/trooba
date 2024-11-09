@@ -3474,7 +3474,7 @@ describe(__filename, function () {
     it(
       "should keep order between request and chunks, short pipe",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h3(pipe) {
             var order = [];
             pipe.on("request", function (request) {
@@ -3507,7 +3507,7 @@ describe(__filename, function () {
     );
 
     it("should handle mutiple resume by mistake", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h(pipe) {
           var order = [];
           pipe.on("request", function (request) {
@@ -3542,7 +3542,7 @@ describe(__filename, function () {
     });
 
     it("should keep order between request and chunks", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.on("request", function (request, next) {
             setTimeout(function delay() {
@@ -3586,7 +3586,7 @@ describe(__filename, function () {
     });
 
     it("should keep order between response and chunks", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.on("response", function (response, next) {
             setTimeout(function delay() {
@@ -3629,7 +3629,7 @@ describe(__filename, function () {
     it(
       "should keep order between response and chunks, partial requestStream",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             pipe.on("response", function (response, next) {
               setTimeout(function delay() {
@@ -3674,7 +3674,7 @@ describe(__filename, function () {
     it(
       "should keep order between request and its chunks and response and its chunks, echo mode",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function hdata(pipe) {
             var reqCount = 0;
             var resCount = 0;
@@ -3743,7 +3743,7 @@ describe(__filename, function () {
     it(
       "should keep order between request and its chunks and response and its chunks, echo mode, parallel execution",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function hdata(pipe) {
             var reqCount = 0;
             var resCount = 0;
@@ -3822,7 +3822,7 @@ describe(__filename, function () {
     it(
       "should not block single response flow when request stream flow is paused",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             pipe.on("request:data", function (data, next) {
               setTimeout(function delay() {
@@ -3855,7 +3855,7 @@ describe(__filename, function () {
     it(
       "should block response stream flow when request stream flow is paused",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             pipe.on("request:data", function (data, next) {
               setTimeout(function delay() {
@@ -3886,7 +3886,7 @@ describe(__filename, function () {
     );
 
     it("should get response", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.on("request:data", function (data, next) {
             setTimeout(function delay() {
@@ -3915,7 +3915,7 @@ describe(__filename, function () {
     it(
       "should block request flow when response fow is blocked",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             pipe.on("response:data", function (data, next) {
               setTimeout(function delay() {
@@ -3952,7 +3952,7 @@ describe(__filename, function () {
     it(
       "should not resume request flow when pipe.throw is called",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             pipe.on("request:data", function (data, next) {
               setTimeout(function delay() {
@@ -3985,7 +3985,7 @@ describe(__filename, function () {
     );
 
     it("should resume request flow when next() is called", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           var count = 0;
           pipe.on("request:data", function (data, next) {
@@ -4021,7 +4021,7 @@ describe(__filename, function () {
     it(
       "should resume request flow when pipe.resume() is called",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             var count = 0;
             pipe.on("request:data", function (data, next) {
@@ -4058,7 +4058,7 @@ describe(__filename, function () {
     it(
       "should not resume response flow when pipe.throw is called",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             pipe.on("response:data", function (data, next) {
               setTimeout(function delay() {
@@ -4092,7 +4092,7 @@ describe(__filename, function () {
     );
 
     it("should replace response with pipe.response", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function (pipe) {
           pipe.on("response", function (response) {
             pipe.respond("replaced");
@@ -4115,7 +4115,7 @@ describe(__filename, function () {
     it(
       "should replace response and stop existing response stream",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function (pipe) {
             pipe.on("response", function (response, next) {
               pipe.respond("replaced");
@@ -4150,7 +4150,7 @@ describe(__filename, function () {
     it(
       "should replace response and stop existing response stream with delayed write",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function (pipe) {
             pipe.on("response", function (response, next) {
               pipe.respond("replaced");
@@ -4187,7 +4187,7 @@ describe(__filename, function () {
     it(
       "should replace request and stop existing request stream",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function (pipe) {
             pipe.on("request", function (response, next) {
               pipe.request("replaced");
@@ -4218,7 +4218,7 @@ describe(__filename, function () {
     );
 
     it("should resume response flow when next() is called", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.on("response:data", function (data, next) {
             setTimeout(function delay() {
@@ -4257,7 +4257,7 @@ describe(__filename, function () {
     it(
       "should resume response flow when pipe.resume() is called",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             var count = 0;
             pipe.on("response:data", function (data, next) {
@@ -4299,7 +4299,7 @@ describe(__filename, function () {
     );
 
     it("should resume response flow when message is dropped", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           var count = 0;
           pipe.on("response:data", function (data, next) {
@@ -4351,7 +4351,7 @@ describe(__filename, function () {
     it(
       "should resume request flow when message in process is dropped",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             var count = 0;
             pipe.on("request:data", function (data, next) {
@@ -4392,7 +4392,7 @@ describe(__filename, function () {
     it(
       "should allow other messages when paused in request flow",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             var count = 0;
             pipe.on("request:data", function (data, next) {
@@ -4447,7 +4447,7 @@ describe(__filename, function () {
     it(
       "should allow other messages when paused in response flow",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             var count = 0;
             pipe.on("response:data", function (data, next) {
@@ -4510,7 +4510,7 @@ describe(__filename, function () {
     );
 
     it("should call resume with empty queue", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.on("request", function (data, next) {
             pipe.resume();
@@ -4533,7 +4533,7 @@ describe(__filename, function () {
     });
 
     it("should call resume with empty context", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.resume();
         })
@@ -4550,7 +4550,7 @@ describe(__filename, function () {
     });
 
     it("should call resume with no context", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.context = null;
           pipe.resume();
@@ -4570,7 +4570,7 @@ describe(__filename, function () {
     it(
       "should trace pipe points, return state of each point with queue length in each",
       function (done) {
-        var pipe = new Trooba()
+        var pipe = new Trooba.Trooba()
           .use(function h1(pipe) {
             pipe.on("response:data", function (data, next) {
               setTimeout(function delay() {
@@ -4646,7 +4646,7 @@ describe(__filename, function () {
     );
 
     it("should detect broken pipe", function (done) {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {
           pipe.once("request:data", function (data, next) {
             // brake the pipe
@@ -4667,13 +4667,13 @@ describe(__filename, function () {
     });
 
     it("should get tail from head", function () {
-      var pipe = new Trooba()
+      var pipe = new Trooba.Trooba()
         .use(function h1(pipe) {})
         .build();
 
       Assert.ok(pipe !== pipe.tail);
 
-      pipe = new Trooba()
+      pipe = new Trooba.Trooba()
         .build();
 
       Assert.ok(pipe === pipe.tail);
@@ -4685,14 +4685,14 @@ describe(__filename, function () {
   });
 
   it("should not find request API", function () {
-    var pipe = new Trooba();
+    var pipe = new Trooba.Trooba();
     Assert.throws(function () {
       pipe.build().create("unknown API");
     }, /Cannot find requested API: unknown API/);
   });
 
   it("should handle paused stream", function (done) {
-    var pipe = new Trooba()
+    var pipe = new Trooba.Trooba()
       .use(function echo(pipe) {
         var stream;
         pipe.on("request", function (request, next) {

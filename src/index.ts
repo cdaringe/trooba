@@ -62,7 +62,6 @@ export class Trooba<Ctx> {
     return pipe;
   }
 }
-
 export default Trooba;
 
 export const use = function createWithHandler(handler, config) {
