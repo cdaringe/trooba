@@ -12,7 +12,7 @@ function createPipeConnector(to: PipePoint): Handler {
   };
 }
 
-type Handler = Function & ((pipe: PipePoint, config?: any) => void);
+type Handler = Function & ((pipe: PipePoint, config?: any) => void | PipePoint);
 
 type EventHandler = (context: Msg, next: AnyFn) => void;
 interface HandlerMeta {
@@ -454,7 +454,7 @@ export class PipePoint {
       }
     }
 
-    function queueAndIfQueued(message) {
+    function queueAndIfQueued(message: Msg) {
       // keep the order for ordered class of messages
       // if point is in process of similar message, the point is paused
       // for the given message till the processing is done
@@ -494,13 +494,13 @@ export class PipePoint {
 
     var current = head;
     while (current) {
-      var ret = current.handler?.(current, current.config);
-      if (ret && !ret._handlersConfigured) {
-        if (ret instanceof PipePoint) {
+      var childPipe = current.handler?.(current, current.config);
+      if (childPipe && !childPipe._handlersConfigured) {
+        if (childPipe instanceof PipePoint) {
           // if pipe is returned, let's attach it to the existing one
-          current.link(ret);
+          current.link(childPipe);
         } else {
-          current.handler = ret;
+          current.handler = childPipe;
           current.handler(current, current.config);
         }
       }
