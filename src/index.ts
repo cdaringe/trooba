@@ -271,7 +271,7 @@ export class PipePoint {
   /**
    * @deprecated Access the property of interest instead
    */
-  get<K extends keyof BaseContext>(name: K): BaseContext[K] {
+  get(name: string): any {
     // @ts-ignore This dynamic property isn't readily converted to typescript
     return this.context?.["$" + name];
   }
@@ -492,7 +492,7 @@ export class PipePoint {
     // @todo evil cast. why is an emptyish thing allowed as a full thing?
     var head = this.copy(context as BaseContext);
 
-    var current = head;
+    var current: PipePoint | undefined = head;
     while (current) {
       var childPipe = current.handler?.(current, current.config);
       if (childPipe && !childPipe._handlersConfigured) {
@@ -504,7 +504,11 @@ export class PipePoint {
           current.handler(current, current.config);
         }
       }
-      current = current._next$ ? current._next$.copy(context) : undefined;
+      /**
+       * @todo
+       * @warn `as BaseContext` cast. is it safe?
+       */
+      current = current._next$ ? current._next$.copy(context as BaseContext) : undefined;
     }
     context.$inited = true;
 
@@ -519,7 +523,7 @@ export class PipePoint {
     return api(head);
   }
 
-  throw(err) {
+  throw(err: unknown) {
     var self = this;
     defer(function () {
       self.send({
@@ -530,7 +534,7 @@ export class PipePoint {
     });
   }
 
-  _exposePipeHooks(point, stream) {
+  _exposePipeHooks(point: PipePoint, stream: WriteStream) {
     stream.on = function onHook(type, handler) {
       point.on(type, handler);
       return stream;
@@ -727,11 +731,19 @@ function once(fn: AnyFn) {
   };
 }
 
-function createWriteStream(ctx: BaseContext) {
+type WriteStream<Data = unknown> = {
+  flow: number
+  point: PipePoint
+  write: (data?: Data) => WriteStream<Data>
+  end: () => WriteStream<Data>
+  on?: (type: string, handler: /** @todo */ any) => WriteStream<Data>
+}
+
+function createWriteStream<Data = unknown>(ctx: BaseContext): WriteStream<Data> {
   var type = ctx.flow === Types.REQUEST ? "request:data" : "response:data";
   var channel = ctx.channel;
 
-  function _write(data) {
+  function _write(data?: Data) {
     // session can be closed by initiating new request/response
     if (ctx.session.closed) {
       return;
