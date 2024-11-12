@@ -29,8 +29,8 @@ export class Trooba {
   _handlers: Handlerish[] = [];
   _pipe: PipePoint | undefined = undefined;
 
-  use(handlerInput: Handler | string, config: any) {
-    let handler: Handler | undefined = undefined;
+  use(handlerInput: Handlerish | string, config: any) {
+    let handler: Handlerish | string | undefined = handlerInput;
     if (typeof handlerInput === "string" && typeof window === "undefined") {
       handler = require(handlerInput) as Handler;
     }
@@ -39,8 +39,12 @@ export class Trooba {
       handler = createPipeConnector(handler);
     }
 
+    if (typeof handler !=='function') {
+      throw new Error('invalid handler')
+    }
+
     this._handlers.push({
-      handler: handler!,
+      handler,
       config: config,
     });
     // TODO: create test for pipe caching
@@ -125,6 +129,9 @@ interface Msg {
   sync?: boolean;
   trace?: (point: PipePoint, message: Msg) => void;
 }
+
+type TraceFn = (pp: PipePoint, msg: Msg) => void;
+
 interface BaseContext {
   flow: number;
   $inited: unknown;
@@ -133,6 +140,8 @@ interface BaseContext {
    * milliseconds
    */
   ttl?: number;
+
+  trace?: TraceFn
 
   onDrop(message: Msg): void;
 
@@ -300,11 +309,16 @@ export class PipePoint {
   trace(callback: (err?: null | unknown, route?: unknown) => void) {
     var self = this;
     callback = callback || console.log;
-    var route = [{
+    var route: {
+      point: PipePoint
+    flow: number,
+    stage?: any
+   }[] = [{
       point: this,
       flow: Types.REQUEST,
     }];
-    this.once("trace", function (list) {
+
+    this.once("trace", function (_list) {
       self.removeListener("error");
       callback(null, route);
     });
@@ -315,7 +329,7 @@ export class PipePoint {
       flow: Types.REQUEST,
       trace: function trace(point, message) {
         route.push({
-          point: point,
+          point,
           flow: message.flow,
           stage: message.stage,
         });
@@ -328,7 +342,7 @@ export class PipePoint {
     queue && queue.resume();
   }
 
-  process(message) {
+  process(message: Msg) {
     var point = this;
 
     // get the hooks
@@ -356,8 +370,8 @@ export class PipePoint {
       }
     }
 
-    if (message.context.trace || message.type === "trace") {
-      var traceFn = message.context.trace || message.trace;
+    if (message.context?.trace || message.type === "trace") {
+      var traceFn = message.context?.trace || message.trace;
       if (typeof traceFn === "function") {
         traceFn(this._pointCtx(message.context).ref, message);
       }
@@ -394,7 +408,7 @@ export class PipePoint {
 
     sendMessage(message);
 
-    function sendMessage(message) {
+    function sendMessage(message: Msg) {
       // if link action happend, route to a newly formed route
       if (
         message.flow === Types.REQUEST &&
@@ -407,8 +421,12 @@ export class PipePoint {
       point.send(message);
     }
 
-    function onComplete(ref) {
+    function onComplete(ref: unknown) {
       if (arguments.length) {
+        /**
+         * @todo what is this ref?
+         * @answer whatever `next(ref)` means
+         */
         message.ref = ref;
       }
       // special case for stream
@@ -618,7 +636,7 @@ export class PipePoint {
    * Message handlers will be attached to specific context and mapped to a specific point by its _id
    * This is need to avoid re-creating pipe for every new context
    */
-  on(type: 'request' | "$link$", handler: EventHandler) {
+  on(type: 'request' | "$link$" | "trace" | "error", handler: EventHandler) {
     var handlers = this.handlers();
     if (handlers[type]) {
       throw new Error(
@@ -631,11 +649,11 @@ export class PipePoint {
     return this;
   }
 
-  once(type, handler) {
-    var self = this;
-    this.on(type, function onceFn() {
+  once<T extends Parameters<typeof PipePoint.prototype.on>[0], H extends Parameters<typeof PipePoint.prototype.on>[1]>(type: T, handler: H) {
+    const self = this;
+    this.on(type, function onOnce() {
       self.removeListener(type);
-      handler.apply(null, arguments);
+      handler.apply(null, arguments as any);
     });
     return this;
   }
