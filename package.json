@@ -44,6 +44,7 @@
   },
   "homepage": "https://github.com/trooba/trooba#readme",
   "devDependencies": {
+    "@types/node": "22.9.0",
     "mocha": "^10.0.0",
     "nock": "^13.2.8",
     "npm-run-all2": "7.0.1",

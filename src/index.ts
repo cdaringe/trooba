@@ -6,23 +6,33 @@ function defer<T extends AnyFn>(fn: T) {
   Promise.resolve().then(fn);
 }
 
-function createPipeConnector(to) {
-  return function pipeConnect(pipe) {
+function createPipeConnector(to: PipePoint): Handler {
+  return function pipeConnect(pipe: PipePoint): void {
     pipe.link(to);
   };
 }
 
-type Handler<Ctx> = any;
+type Handler = Function & ((pipe: PipePoint, config?: any) => void);
+
+type EventHandler = (context: Msg, next: AnyFn) => void;
+interface HandlerMeta {
+  handler: Handler;
+  config?: any;
+}
+
+type Handlerish = Handler | HandlerMeta;
 
 /**
  * Assigns transport to the client pipeline
  */
-export class Trooba<Ctx> {
-  _handlers: Handler<Ctx>[] = [];
+export class Trooba {
+  _handlers: Handlerish[] = [];
+  _pipe: PipePoint | undefined = undefined;
 
-  use(handler: Handler<Ctx>, config) {
-    if (typeof handler === "string" && typeof window === "undefined") {
-      handler = require(handler);
+  use(handlerInput: Handler | string, config: any) {
+    let handler: Handler | undefined = undefined;
+    if (typeof handlerInput === "string" && typeof window === "undefined") {
+      handler = require(handlerInput) as Handler;
     }
 
     if (handler instanceof PipePoint) {
@@ -30,7 +40,7 @@ export class Trooba<Ctx> {
     }
 
     this._handlers.push({
-      handler: handler,
+      handler: handler!,
       config: config,
     });
     // TODO: create test for pipe caching
@@ -38,7 +48,7 @@ export class Trooba<Ctx> {
     return this;
   }
 
-  build(context: Handler<Ctx>) {
+  build(context?: Partial<BaseContext>) {
     var pipe = this._pipe;
     if (!pipe || context) {
       var handlers = this._handlers.slice();
@@ -49,6 +59,7 @@ export class Trooba<Ctx> {
     // remove non-persistent context data if any
     context = Object.keys(context || {}).reduce(function reduce(memo, name) {
       if (name.charAt(0) !== "$") {
+        // @ts-expect-error
         memo[name] = context[name];
       }
       return memo;
@@ -58,31 +69,30 @@ export class Trooba<Ctx> {
       },
     });
 
-    pipe.context = context;
+    pipe.context = context as BaseContext;
     return pipe;
   }
 }
 export default Trooba;
 
-export const use = function createWithHandler(handler, config) {
+export const use = function createWithHandler(handler: Handler, config: any) {
   var trooba = new Trooba();
   return trooba.use(handler, config);
 };
 
-function buildPipe(handlers) {
-  var head;
-  var tail = handlers.reduce(function reduce(prev, handlerMeta) {
+export function buildPipe(handlers: Handlerish[]): PipePoint {
+  var head: PipePoint | undefined;
+  var tail = handlers.reduce<PipePoint | undefined>(function reduce(prev, handlerMeta) {
     var point = createPipePoint(handlerMeta, prev);
     head = head || point;
     return point;
   }, undefined);
-  head._tail$ = tail;
-  return head;
+  head!._tail$ = tail;
+  return head!;
 }
-module.exports.buildPipe = buildPipe;
 
-function createPipePoint(handler, prev) {
-  var point = new PipePoint(handler);
+export function createPipePoint(handlerish: Handlerish, prev?: PipePoint): PipePoint {
+  var point = new PipePoint(handlerish);
   if (prev) {
     point._prev$ = prev;
     prev._next$ = point;
@@ -90,7 +100,6 @@ function createPipePoint(handler, prev) {
   return point;
 }
 
-module.exports.createPipePoint = createPipePoint;
 
 export const Types = {
   REQUEST: 1,
@@ -102,16 +111,65 @@ export const Stages = {
   PROCESS: 2,
 };
 
-/*
+interface Msg {
+  type: string;
+  flow: number;
+  ref?: any;
+  order?: boolean;
+  inProcess?: boolean;
+  session?: { closed?: boolean };
+  context?: BaseContext;
+  ttl?: number;
+  stage?: number;
+  pointId?: string;
+  sync?: boolean;
+  trace?: (point: PipePoint, message: Msg) => void;
+}
+interface BaseContext {
+  flow: number;
+  $inited: unknown;
+  $points: Record<string, { ref: PipePoint }>;
+  /**
+   * milliseconds
+   */
+  ttl?: number;
+
+  onDrop(message: Msg): void;
+
+  validate: Record<string, boolean>;
+}
+
+type MessageHandlers = Record<string, AnyFn>;
+
+/**
  * Channel point forms a linked list node
  */
 export class PipePoint {
-  constructor(handler) {
+  static instanceCounter = 0;
+  _next$: PipePoint | undefined = undefined;
+  _prev$: PipePoint | undefined = undefined;
+  _tail$: PipePoint | undefined = undefined;
+  _id: string;
+  _uid: number;
+  handler?: HandlerMeta['handler'];
+  config: HandlerMeta['config'];
+  store: Record<string, unknown>;
+  context?: BaseContext;
+  _queue?: Queue;
+
+  /**
+   * @todo narrow this
+   */
+  _messageHandlers: MessageHandlers;
+  _handlersConfigured: boolean =false;
+
+  constructor(handler?: Handlerish) {
     this._messageHandlers = {};
-    this.handler = handler;
     if (handler && typeof handler !== "function") {
       this.handler = handler.handler;
       this.config = handler.config;
+    } else {
+      this.handler = handler;
     }
     // build a unique identifer for every new instance of point
     // we do not anticipate creates of so many within one pipe to create conflicts
@@ -122,7 +180,7 @@ export class PipePoint {
     this._id = (this.handler ? this.handler.name + "-" : "") + this._uid;
     this.store = {};
   }
-  send(message) {
+  send(message: Msg) {
     if (shouldIgnore(message)) {
       return;
     }
@@ -150,7 +208,7 @@ export class PipePoint {
     message.ttl = message.ttl !== undefined
       ? message.ttl
       : (Date.now() + (this.context && this.context.ttl || TTL));
-    if (message.ttl < Date.now()) {
+    if (message.ttl! < Date.now()) {
       // onDrop message and let user know
       (this.context && this.context.onDrop || module.exports.onDrop)(message);
       return;
@@ -180,7 +238,7 @@ export class PipePoint {
     return this;
   }
 
-  copy(context) {
+  copy(context: BaseContext) {
     var ret = new PipePoint();
     ret._next$ = this._next$;
     ret._prev$ = this._prev$;
@@ -195,16 +253,21 @@ export class PipePoint {
     return ret;
   }
 
-  set(name, value) {
-    this.context["$" + name] = value;
+  set(name: string, value: any) {
+    // @ts-ignore This dynamic property isn't readily converted to typescript
+    this.context!["$" + name] = value;
     return this;
   }
 
-  get(name) {
-    return this.context["$" + name];
+  /**
+   * @deprecated Access the property of interest instead
+   */
+  get<K extends keyof BaseContext>(name: K): BaseContext[K] {
+    // @ts-ignore This dynamic property isn't readily converted to typescript
+    return this.context?.["$" + name];
   }
 
-  link(pipe) {
+  link(pipe: PipePoint) {
     var self = this;
     if (this._pointCtx().$linked) {
       throw new Error("The pipe already has a link");
@@ -234,7 +297,7 @@ export class PipePoint {
     });
   }
 
-  trace(callback) {
+  trace(callback: (err?: null | unknown, route?: unknown) => void) {
     var self = this;
     callback = callback || console.log;
     var route = [{
@@ -387,7 +450,7 @@ export class PipePoint {
    * to allow them to hook to events they are interested in
    * The context will be attached to every message and bound to pipe
    */
-  create(context, interfaceName) {
+  create<C extends BaseContext>(context?: Partial<C>, interfaceName?: string) {
     if (typeof arguments[0] === "string") {
       interfaceName = arguments[0];
       context = undefined;
@@ -399,18 +462,21 @@ export class PipePoint {
       // inherit from existing context if any
       var self = this;
       Object.keys(this.context).forEach(function forEach(name) {
+        // @ts-expect-error
         if (name.charAt(0) !== "$" && !context[name]) {
+          // @ts-expect-error
           context[name] = self.context[name];
         }
       });
     }
 
     // bind context to the points
-    var head = this.copy(context);
+    // @todo evil cast. why is an emptyish thing allowed as a full thing?
+    var head = this.copy(context as BaseContext);
 
     var current = head;
     while (current) {
-      var ret = current.handler(current, current.config);
+      var ret = current.handler?.(current, current.config);
       if (ret && !ret._handlersConfigured) {
         if (ret instanceof PipePoint) {
           // if pipe is returned, let's attach it to the existing one
@@ -552,7 +618,7 @@ export class PipePoint {
    * Message handlers will be attached to specific context and mapped to a specific point by its _id
    * This is need to avoid re-creating pipe for every new context
    */
-  on(type, handler) {
+  on(type: 'request' | "$link$", handler: EventHandler) {
     var handlers = this.handlers();
     if (handlers[type]) {
       throw new Error(
@@ -574,12 +640,18 @@ export class PipePoint {
     return this;
   }
 
-  removeListener(type) {
+  removeListener(type: string) {
     delete this.handlers()[type];
   }
 
-  _pointCtx(ctx) {
-    ctx = ctx || this.context;
+  /**
+   * @todo
+   * @warn what exactly is going on here.
+   * from a context, we look at a map of points. the mapping
+   * is `id:...PipePoint?`
+   */
+  _pointCtx(ctxInput?: BaseContext): { ref: PipePoint, $linked?: boolean } {
+    const ctx = ctxInput || this.context;
     if (!ctx) {
       throw new Error(
         "Context is missing, please make sure context() is used first",
@@ -591,7 +663,7 @@ export class PipePoint {
     };
   }
 
-  handlers(ctx) {
+  handlers(ctx?: BaseContext): MessageHandlers {
     var pointCtx = this._pointCtx(ctx);
     return pointCtx._messageHandlers = pointCtx._messageHandlers || {};
   }
@@ -614,15 +686,15 @@ export class PipePoint {
     return this._prev$;
   }
 
-  get tail() {
+  get tail(): PipePoint  {
     if (this.context && this._tail$) {
       return this._tail$._pointCtx(this.context).ref;
     }
-    return this._tail$;
+    return this._tail$!;
   }
 }
 
-export const onDrop = (message) => {
+export const onDrop = (message: Msg) => {
   console.log(
     "The message has been dropped, ttl expired:",
     message.type,
@@ -630,14 +702,14 @@ export const onDrop = (message) => {
   );
 };
 
-function once(fn) {
+function once(fn: AnyFn) {
   return function once() {
-    fn.apply(null, arguments);
+    fn.apply(null, arguments as unknown as any[]);
     fn = function noop() {};
   };
 }
 
-function createWriteStream(ctx) {
+function createWriteStream(ctx: BaseContext) {
   var type = ctx.flow === Types.REQUEST ? "request:data" : "response:data";
   var channel = ctx.channel;
 
@@ -683,12 +755,14 @@ function createWriteStream(ctx) {
   };
 }
 
-function shouldIgnore(message) {
+function shouldIgnore(message: Msg) {
   return message.session && message.session.closed;
 }
 
 export class Queue {
-  constructor(pipe) {
+  pipe: PipePoint;
+
+  constructor(pipe: PipePoint) {
     this.pipe = pipe;
   }
 
@@ -706,7 +780,7 @@ export class Queue {
   }
 
   // return true, if message prcessing should be paused
-  add(message) {
+  add(message: Msg) {
     if (
       !message.order || // no keep order needed
       message.inProcess
