@@ -1,5 +1,9 @@
 # ChangeLog
 
+## v3.0.0
+
+- Feat: Refactor into TypeScript. Update min node version to 16+.
+
 ## v2.1.2
 
 - Fix: Should keep the order in stream response when pipe.throw is activated

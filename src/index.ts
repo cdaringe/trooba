@@ -187,9 +187,6 @@ export class PipePoint<
   context: BaseContext = { flow: -1, $inited: false };
   _queue?: Queue;
 
-  /**
-   * @todo narrow this
-   */
   _messageHandlers: MessageHandlers;
   _handlersConfigured: boolean =false;
 
@@ -442,12 +439,8 @@ export class PipePoint<
       point.send(message);
     }
 
-    function onComplete(ref: unknown) {
+    function onComplete(ref: Res) {
       if (arguments.length) {
-        /**
-         * @todo what is this ref?
-         * @answer whatever `next(ref)` means
-         */
         message.ref = ref;
       }
       // special case for stream
@@ -510,7 +503,6 @@ export class PipePoint<
     }
 
     // bind context to the points
-    // @todo evil cast. why is an emptyish thing allowed as a full thing?
     var head = this.copy(context as BaseContext);
 
     var current: PipePoint | undefined = head;
@@ -567,10 +559,6 @@ export class PipePoint<
   }
 
   streamRequest(request: Req) {
-    /**
-     * @todo be less evil.
-     */
-    this.context.$requestStream = true as unknown as WriteStream;
     var point = this.request(request);
     var writeStream = createWriteStream({
       channel: point,
@@ -697,7 +685,6 @@ export class PipePoint<
    * is `id:...PipePoint?`
    */
   _pointCtx(ctxInput?: BaseContext): { ref: PipePoint, $linked?: boolean, queue?: Msg[],
-
     _messageHandlers?: Record<string, AnyFn>
    } {
     const ctx = ctxInput || this.context;

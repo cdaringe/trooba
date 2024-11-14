@@ -1769,7 +1769,7 @@ describe(__filename, function () {
           // since we get sync message we do not need to call any next method
           // one cannot prevent it from propagation down the pipeline
 
-          // symulate delayed context change that should not affect reponse
+          // simulate delayed context change that should not affect response
           setTimeout(function () {
             pipe.context.data = "boom";
             next();
