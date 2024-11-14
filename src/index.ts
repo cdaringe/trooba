@@ -12,7 +12,10 @@ function createPipeConnector(to: PipePoint): Handler {
   };
 }
 
-type Handler = Function & ((pipe: PipePoint, config?: any) => void | PipePoint);
+type Handler =  ((pipe: PipePoint, config?: any) => void | PipePoint | Handler) & {
+  name: string;
+  _handlersConfigured?: boolean;
+};
 
 type EventHandler = (context: Msg, next: AnyFn) => void;
 interface HandlerMeta {
@@ -115,13 +118,17 @@ export const Stages = {
   PROCESS: 2,
 };
 
+interface RequestSession {
+  closed?: boolean
+}
+
 interface Msg {
   type: string;
   flow: number;
   ref?: any;
   order?: boolean;
   inProcess?: boolean;
-  session?: { closed?: boolean };
+  session?: RequestSession;
   context?: BaseContext;
   ttl?: number;
   stage?: number;
@@ -133,9 +140,15 @@ interface Msg {
 type TraceFn = (pp: PipePoint, msg: Msg) => void;
 
 interface BaseContext {
+  channel?: PipePoint;
   flow: number;
-  $inited: unknown;
-  $points: Record<string, { ref: PipePoint }>;
+  $inited?: unknown;
+  $requestStream?: WriteStream;
+  $requestSession?: RequestSession;
+  $responseSession?: any
+  $responseStream?: any;
+  session?: RequestSession
+  $points?: Record<string, { ref: PipePoint }>;
   /**
    * milliseconds
    */
@@ -143,9 +156,9 @@ interface BaseContext {
 
   trace?: TraceFn
 
-  onDrop(message: Msg): void;
+  onDrop?: (message: Msg) => void;
 
-  validate: Record<string, boolean>;
+  validate?: Record<string, boolean>;
 }
 
 type MessageHandlers = Record<string, AnyFn>;
@@ -153,17 +166,25 @@ type MessageHandlers = Record<string, AnyFn>;
 /**
  * Channel point forms a linked list node
  */
-export class PipePoint {
+export class PipePoint<
+  /**
+   * Request payload. We use `any` as default to easy migration.
+   */
+  Req=any,
+  Res=any
+> {
   static instanceCounter = 0;
   _next$: PipePoint | undefined = undefined;
   _prev$: PipePoint | undefined = undefined;
   _tail$: PipePoint | undefined = undefined;
   _id: string;
   _uid: number;
+  _streamClosed: boolean = false;
+
   handler?: HandlerMeta['handler'];
   config: HandlerMeta['config'];
   store: Record<string, unknown>;
-  context?: BaseContext;
+  context: BaseContext = { flow: -1, $inited: false };
   _queue?: Queue;
 
   /**
@@ -289,7 +310,7 @@ export class PipePoint {
         return pipe.send(message); // will be processed first
       }
       message.stage = Stages.PROCESS;
-      pipe.tail.send(message);
+      pipe.tail?.send(message);
     });
     pipe.on("$link$", function onEnd(message) {
       if (message.flow === Types.RESPONSE) {
@@ -298,7 +319,7 @@ export class PipePoint {
         return self.send(message);
       }
     });
-    pipe.tail.on("$link$", function onEnd(message) {
+    pipe.tail?.on("$link$", function onEnd(message) {
       if (message.flow === Types.REQUEST) {
         // send forward
         return self.send(message);
@@ -545,8 +566,11 @@ export class PipePoint {
     };
   }
 
-  streamRequest(request) {
-    this.context.$requestStream = true;
+  streamRequest(request: Req) {
+    /**
+     * @todo be less evil.
+     */
+    this.context.$requestStream = true as unknown as WriteStream;
     var point = this.request(request);
     var writeStream = createWriteStream({
       channel: point,
@@ -559,7 +583,7 @@ export class PipePoint {
     return writeStream;
   }
 
-  request(request, callback) {
+  request(request: Req, callback?: (err?: unknown, msg?: Msg) => void) {
     var point = this;
     if (this.context.$requestSession) {
       this.context.$requestSession.closed = true;
@@ -568,7 +592,7 @@ export class PipePoint {
     this.resume();
 
     function sendRequest() {
-      var msg = {
+      var msg:Msg= {
         type: "request",
         flow: Types.REQUEST,
         ref: request,
@@ -597,7 +621,7 @@ export class PipePoint {
     return point;
   }
 
-  respond(response) {
+  respond(response: Res) {
     var point = this;
 
     if (this.context.$responseSession) {
@@ -608,7 +632,7 @@ export class PipePoint {
     this.resume();
 
     function sendResponse() {
-      var msg = {
+      var msg: Msg = {
         type: "response",
         flow: Types.RESPONSE,
         ref: response,
@@ -623,7 +647,7 @@ export class PipePoint {
     return this;
   }
 
-  streamResponse(response) {
+  streamResponse(response: Res) {
     this.context.$responseStream = true;
     var point = this.respond(response);
 
@@ -640,7 +664,7 @@ export class PipePoint {
    * Message handlers will be attached to specific context and mapped to a specific point by its _id
    * This is need to avoid re-creating pipe for every new context
    */
-  on(type: 'request' | "$link$" | "trace" | "error", handler: EventHandler) {
+  on(type: 'request' | "response" | "$link$" | "trace" | "error", handler: EventHandler) {
     var handlers = this.handlers();
     if (handlers[type]) {
       throw new Error(
@@ -672,7 +696,10 @@ export class PipePoint {
    * from a context, we look at a map of points. the mapping
    * is `id:...PipePoint?`
    */
-  _pointCtx(ctxInput?: BaseContext): { ref: PipePoint, $linked?: boolean } {
+  _pointCtx(ctxInput?: BaseContext): { ref: PipePoint, $linked?: boolean, queue?: Msg[],
+
+    _messageHandlers?: Record<string, AnyFn>
+   } {
     const ctx = ctxInput || this.context;
     if (!ctx) {
       throw new Error(
@@ -694,25 +721,25 @@ export class PipePoint {
     return this._queue = this._queue || new Queue(this);
   }
 
-  get next() {
+  get next(): PipePoint | undefined {
     if (this.context && this.context.$points && this._next$) {
       return this.context.$points[this._next$._id].ref;
     }
     return this._next$;
   }
 
-  get prev() {
+  get prev(): PipePoint | undefined {
     if (this.context && this.context.$points && this._prev$) {
       return this.context.$points[this._prev$._id].ref;
     }
     return this._prev$;
   }
 
-  get tail(): PipePoint  {
+  get tail(): PipePoint | undefined  {
     if (this.context && this._tail$) {
       return this._tail$._pointCtx(this.context).ref;
     }
-    return this._tail$!;
+    return this._tail$;
   }
 }
 
@@ -735,30 +762,40 @@ type WriteStream<Data = unknown> = {
   flow: number
   point: PipePoint
   write: (data?: Data) => WriteStream<Data>
-  end: () => WriteStream<Data>
-  on?: (type: string, handler: /** @todo */ any) => WriteStream<Data>
+  end: () =>PipePoint;//  WriteStream<Data>
+  on?: (type: /** @todo */ any, handler: /** @todo */ any) => WriteStream<Data>
+  once?: (type: /** @todo */ any, handler: /** @todo */ any) => WriteStream<Data>
 }
 
 function createWriteStream<Data = unknown>(ctx: BaseContext): WriteStream<Data> {
   var type = ctx.flow === Types.REQUEST ? "request:data" : "response:data";
   var channel = ctx.channel;
 
+  if (!channel) {
+    throw new Error('missing channel')
+  }
+
+
   function _write(data?: Data) {
+    if (!ctx.session) {
+      throw new Error('missing channel')
+    }
+
     // session can be closed by initiating new request/response
     if (ctx.session.closed) {
       return;
     }
 
-    if (channel._streamClosed) {
+    if (channel!._streamClosed) {
       throw new Error("The stream has been closed already");
     }
 
     if (data === undefined) {
-      ctx.channel._streamClosed = true;
+      ctx.channel!._streamClosed = true;
     }
 
     defer(function defer() {
-      channel.send({
+      channel!.send({
         type: type,
         flow: ctx.flow,
         ref: data,
@@ -780,7 +817,7 @@ function createWriteStream<Data = unknown>(ctx: BaseContext): WriteStream<Data> 
 
     end: function () {
       _write();
-      return channel;
+      return channel!;
     },
   };
 }
@@ -796,12 +833,13 @@ export class Queue {
     this.pipe = pipe;
   }
 
-  size(context) {
+  size(context?: BaseContext) {
     context = context || this.pipe.context;
-    return context ? this.getQueue(context).length : 0;
+    const queue = context ? this.getQueue(context) : undefined;
+    return queue?.length || 0;
   }
 
-  getQueue(context) {
+  getQueue(context?: BaseContext): void | Msg[] {
     context = context || this.pipe.context;
     if (context) {
       var pointCtx = this.pipe._pointCtx(context);
@@ -819,6 +857,9 @@ export class Queue {
     }
 
     var queue = this.getQueue(message.context);
+    if (!queue) {
+      throw new Error("no queue--impossible case");
+    }
     queue.unshift(message); // FIFO
     message.pointId = this.pipe._id;
     var moreInQueue = queue.length > 1;
@@ -841,10 +882,13 @@ export class Queue {
     }
   }
 
-  done(message) {
+  done(message: Msg) {
     var point = this.pipe;
     var queue = this.getQueue(message.context);
-    var msg = queue.pop();
+    if (!queue) {
+      throw new Error('missing queue--impossible case')
+    }
+    var msg = queue?.pop();
     if (msg !== message) {
       throw new Error("The queue for " + this.pipe._id + " is broken");
     }
@@ -856,7 +900,7 @@ export class Queue {
     if (msg) {
       msg.inProcess = true;
       defer(function () {
-        point.process(msg);
+        point.process(msg!);
       });
     }
   }
