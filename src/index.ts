@@ -517,10 +517,6 @@ export class PipePoint<
           current.handler(current, current.config);
         }
       }
-      /**
-       * @todo
-       * @warn `as BaseContext` cast. is it safe?
-       */
       current = current._next$ ? current._next$.copy(context as BaseContext) : undefined;
     }
     context.$inited = true;
@@ -678,12 +674,6 @@ export class PipePoint<
     delete this.handlers()[type];
   }
 
-  /**
-   * @todo
-   * @warn what exactly is going on here.
-   * from a context, we look at a map of points. the mapping
-   * is `id:...PipePoint?`
-   */
   _pointCtx(ctxInput?: BaseContext): { ref: PipePoint, $linked?: boolean, queue?: Msg[],
     _messageHandlers?: Record<string, AnyFn>
    } {
